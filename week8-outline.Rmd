@@ -58,20 +58,20 @@ library(here)
 library(tmap)
 
 rm(list = ls())
-here::i_am("labs/week8-outline.Rmd")
+# here::i_am("labs/week8-outline.Rmd")
 ```
 
 #### load Landsat data
 Here we load 8 scenes collected by the Landsat OLI sensor.
 ```{r include=TRUE}
-landsat_20180612 <-rast(here("labs", "data", "week8", "landsat_20180612.tif"))
-landsat_20180815 <- rast(here("labs", "data", "week8", "landsat_20180815.tif"))
-landsat_20181018 <- rast(here("labs", "data", "week8", "landsat_20181018.tif"))
-landsat_20181103 <- rast(here("labs", "data", "week8", "landsat_20181103.tif"))
-landsat_20190122 <- rast(here("labs", "data", "week8", "landsat_20190122.tif"))
-landsat_20190223 <- rast(here("labs", "data", "week8", "landsat_20190223.tif"))
-landsat_20190412 <- rast(here("labs", "data", "week8", "landsat_20190412.tif"))
-landsat_20190701 <- rast(here("labs", "data", "week8", "landsat_20190701.tif"))
+landsat_20180612 <-rast(here("data (1)", "landsat_20180612.tif"))
+landsat_20180815 <- rast(here("data (1)", "landsat_20180815.tif"))
+landsat_20181018 <- rast(here("data (1)", "landsat_20181018.tif"))
+landsat_20181103 <- rast(here("data (1)", "landsat_20181103.tif"))
+landsat_20190122 <- rast(here("data (1)", "landsat_20190122.tif"))
+landsat_20190223 <- rast(here("data (1)", "landsat_20190223.tif"))
+landsat_20190412 <- rast(here("data (1)", "landsat_20190412.tif"))
+landsat_20190701 <- rast(here("data (1)", "landsat_20190701.tif"))
 ```
 
 #### rename layers
@@ -92,6 +92,10 @@ Here we define a function to compute the Normalized Difference Vegetation Index 
 
 ```{r include=TRUE}
 
+ndvi_fun <- function(nir, red){
+    (nir-red)/(nir+red)
+}
+
 ```
 
 #### compute NDVI
@@ -99,26 +103,52 @@ Here we apply the NDVI function we created to compute NDVI for each image using 
 
 ```{r include=TRUE}
 
+ndvi_20180612 <- lapp(landsat_20180612[[c(4, 3)]], fun = ndvi_fun)
+ndvi_20180815 <- lapp(landsat_20180815[[c(4, 3)]], fun = ndvi_fun)
+ndvi_20181018 <- lapp(landsat_20181018[[c(4, 3)]], fun = ndvi_fun)
+ndvi_20181103 <- lapp(landsat_20181103[[c(4, 3)]], fun = ndvi_fun)
+ndvi_20190122 <- lapp(landsat_20190122[[c(4, 3)]], fun = ndvi_fun)
+ndvi_20190223 <- lapp(landsat_20190223[[c(4, 3)]], fun = ndvi_fun)
+ndvi_20190412 <- lapp(landsat_20190412[[c(4, 3)]], fun = ndvi_fun)
+ndvi_20190701 <- lapp(landsat_20190701[[c(4, 3)]], fun = ndvi_fun)
+
 ```
 
 #### combine NDVI layers
 Now we can combine the NDVI layers we created into a single raster stack.
 ```{r include=TRUE}
 
+all_ndvi <- c(ndvi_20180612, ndvi_20180815, ndvi_20181018, ndvi_20181103, 
+              ndvi_20190122, ndvi_20190223, ndvi_20190412, ndvi_20190701)
+
 ```
 Let's update the names of each layer to match the date of each image. 
 ```{r include=TRUE}
-
+names(all_ndvi) <-  c("2018-06-12",
+                     "2018-08-15",
+                     "2018-10-18",
+                     "2018-11-03",
+                     "2019-01-22",
+                     "2019-02-23",
+                     "2019-04-12",
+                     "2019-07-01")
 ```
 
 #### read in study sites
 ```{r include=TRUE}
+
+sites <- st_read(here("data (1)", "study_sites.shp"))
 
 ```
 
 #### extract NDVI at study sites
 Here we find the average NDVI within each study site. The output of extract is a data frame with rows that match the study site dataset, so we bind the results to the original dataset. 
 ```{r include=TRUE}
+
+sites_ndvi <- terra::extract(all_ndvi, sites, fun = "mean")
+
+sites_annotated <- cbind(sites, sites_ndvi) #binds a whole column to a data frame
+
 
 ```
 
@@ -129,6 +159,20 @@ We're done! Except our data is very untidy... Let's tidy it up!\
 -   turn from wide to long format
 -   turn layer names into date format
 ```{r include=TRUE}
+
+sites_clean <- sites_annotated %>%
+    st_drop_geometry() %>%
+    select(-ID) %>%
+    pivot_longer(!study_site) %>%
+    rename("NDVI" = value) %>%
+    mutate("year" = str_sub(name, 2, 5),
+           "month" = str_sub(name, 7, 8),
+           "day" = str_sub(name, -2, -1)) %>%
+    unite("date", 4:6, sep = "-") %>%
+    mutate("date" = lubridate::as_date(date))
+
+ggplot(sites_clean, aes(x = date, y = NDVI, group = study_site, col = study_site)) +
+    geom_line()
 
 ```
 
